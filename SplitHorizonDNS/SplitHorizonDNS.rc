@@ -1,0 +1,41 @@
+// Split-Horizon DNS Server – dialog resource
+#include <winresrc.h>
+#include "resource.h"
+
+/////////////////////////////////////////////////////////////////////////////
+// Dialog
+
+IDD_MAIN DIALOGEX 0, 0, 450, 385
+STYLE DS_SETFONT | DS_CENTER | WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU
+CAPTION "Split-Horizon DNS Server"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    // ── Add Record section ─────────────────────────────────────────────
+    GROUPBOX        "Add Local DNS Record / DNS Rewrite",IDC_STATIC,5,5,440,78
+    LTEXT           "Hostname:",IDC_STATIC,12,22,42,8
+    EDITTEXT        IDC_EDIT_HOSTNAME,58,20,145,12,ES_AUTOHSCROLL
+    LTEXT           "IP Address:",IDC_STATIC,212,22,46,8
+    EDITTEXT        IDC_EDIT_IPADDRESS,260,20,115,12,ES_AUTOHSCROLL
+    LTEXT           "DNS Server:",IDC_STATIC,12,42,42,8
+    EDITTEXT        IDC_EDIT_DNSSERVER,58,40,145,12,ES_AUTOHSCROLL
+    LTEXT           "(Upstream DNS for all other queries)",IDC_STATIC,12,58,230,8
+    PUSHBUTTON      "Add Record",IDC_BTN_ADD,370,32,70,14
+
+    // ── Records list section ───────────────────────────────────────────
+    GROUPBOX        "DNS Records",IDC_STATIC,5,88,440,140
+    CONTROL         "",IDC_LIST_RECORDS,"SysListView32",
+                    LVS_REPORT|LVS_SHOWSELALWAYS|LVS_SINGLESEL|WS_BORDER|WS_TABSTOP,
+                    12,100,345,122
+    PUSHBUTTON      "Remove Selected",IDC_BTN_REMOVE,363,100,76,14
+
+    // ── Server control section ─────────────────────────────────────────
+    GROUPBOX        "Server Control",IDC_STATIC,5,233,440,33
+    PUSHBUTTON      "Start Server",IDC_BTN_START,12,244,58,14
+    PUSHBUTTON      "Stop Server",IDC_BTN_STOP,76,244,58,14
+    LTEXT           "Status: Stopped",IDC_STATIC_STATUS,142,246,295,10
+
+    // ── Log section ────────────────────────────────────────────────────
+    GROUPBOX        "Log",IDC_STATIC,5,271,440,110
+    LISTBOX         IDC_LIST_LOG,12,282,426,93,
+                    LBS_NOINTEGRALHEIGHT|WS_VSCROLL|WS_TABSTOP
+END
