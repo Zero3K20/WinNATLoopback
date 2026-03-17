@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef IDC_STATIC
+#define IDC_STATIC              (-1)
+#endif
+
 #define IDD_MAIN            101
 
 #define IDC_EDIT_HOSTNAME   1001
