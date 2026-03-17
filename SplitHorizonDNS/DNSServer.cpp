@@ -248,7 +248,7 @@ bool DNSServer::ForwardQuery(const uint8_t* data, int len, uint8_t* response, in
     srv.sin_family = AF_INET;
     srv.sin_port   = htons(53);
 
-    std::string upstreamA(upstream.begin(), upstream.end());
+    std::string upstreamA = WtoA(upstream.c_str());
     if (inet_pton(AF_INET, upstreamA.c_str(), &srv.sin_addr) != 1) {
         // Treat as hostname
         addrinfo hints{}, *result = nullptr;
@@ -310,7 +310,7 @@ void DNSServer::ProcessQuery(const uint8_t* data, int len, const sockaddr_in& cl
         for (auto& rec : records) {
             if (ToLowerW(rec.hostname) == wName) {
                 struct in_addr addr{};
-                std::string ipA(rec.ipAddress.begin(), rec.ipAddress.end());
+                std::string ipA = WtoA(rec.ipAddress.c_str());
                 if (inet_pton(AF_INET, ipA.c_str(), &addr) == 1) {
                     uint8_t response[512];
                     int responseLen = 0;

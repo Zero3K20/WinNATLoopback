@@ -12,6 +12,15 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+// Narrow a wide string that is known to contain only ASCII characters
+// (DNS names, IPv4 literals) without triggering C4244.
+inline std::string WtoA(const wchar_t* ws) {
+    std::string result;
+    result.reserve(wcslen(ws));
+    for (; *ws; ++ws) result += static_cast<char>(*ws);
+    return result;
+}
+
 struct DNSRecord {
     std::wstring hostname;   // e.g. "myserver.local"
     std::wstring ipAddress;  // e.g. "192.168.1.50"

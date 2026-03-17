@@ -186,8 +186,7 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
             // Validate IP
             {
                 struct in_addr testAddr{};
-                std::wstring wip(ip);
-                std::string aip(wip.begin(), wip.end());
+                std::string aip = WtoA(ip);
                 if (inet_pton(AF_INET, aip.c_str(), &testAddr) != 1) {
                     MessageBox(hDlg, L"Invalid IPv4 address.", L"Validation", MB_ICONWARNING);
                     break;
