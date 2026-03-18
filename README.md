@@ -17,6 +17,7 @@ firewall/public IP.
 | **Upstream DNS forwarding** | All non-local queries are forwarded to a user-specified DNS server (e.g. `8.8.8.8`) |
 | **Persistent configuration** | Records and upstream DNS setting are saved to `dns_config.ini` next to the executable |
 | **Activity log** | Live log pane shows which queries were answered locally vs. forwarded |
+| **Windows Service** | Install / uninstall as an auto-start Windows service from the GUI |
 
 ---
 
@@ -59,6 +60,34 @@ firewall/public IP.
 * **Single machine (test):** `netsh interface ip set dns "Local Area Connection" static 127.0.0.1`
 * **DHCP option 6** on your router/DHCP server: set the DNS server to the IP of
   the machine running SplitHorizonDNS.
+
+---
+
+## Running as a Windows Service
+
+The application can install itself as an auto-start Windows service so that DNS
+resolution starts automatically at boot without requiring a user to be logged in.
+
+### Install the service
+
+1. Run `SplitHorizonDNS.exe` **as Administrator**.
+2. Configure your DNS records and upstream servers, then save them (the settings
+   are persisted in `dns_config.ini` automatically).
+3. Click **Install as Service** in the *Server Control* section.
+4. A success message will confirm the service was registered.  It will start
+   automatically at the next system boot.
+5. To start it immediately without rebooting, open `services.msc`, locate
+   **Split-Horizon DNS Server**, and click *Start*.
+
+### Uninstall the service
+
+1. Run `SplitHorizonDNS.exe` **as Administrator**.
+2. Click **Uninstall Service** in the *Server Control* section.
+3. The service will be stopped (if running) and removed from the system.
+
+> **Note:** Both buttons require Administrator rights.  The service runs as
+> *LocalSystem* and reads its configuration from `dns_config.ini` located in
+> the same directory as the executable.
 
 ---
 
