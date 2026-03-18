@@ -254,6 +254,10 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
             UpdateStatus(false);
             break;
 
+        case IDC_BTN_CLEAR_CACHE:
+            g_server.ClearCache();
+            break;
+
         case IDCANCEL:
         case IDOK:
             SendMessage(hDlg, WM_CLOSE, 0, 0);
@@ -287,6 +291,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         StringCchCat(g_configPath, MAX_PATH, L"dns_config.ini");
     } else {
         StringCchCopy(g_configPath, MAX_PATH, L"dns_config.ini");
+    }
+
+    // Set the cache file path (same directory, different name)
+    {
+        wchar_t cachePath[MAX_PATH];
+        GetModuleFileName(nullptr, cachePath, MAX_PATH);
+        wchar_t* ls = wcsrchr(cachePath, L'\\');
+        if (ls) {
+            *(ls + 1) = L'\0';
+            StringCchCat(cachePath, MAX_PATH, L"dns_cache.bin");
+        } else {
+            StringCchCopy(cachePath, MAX_PATH, L"dns_cache.bin");
+        }
+        g_server.SetCacheFilePath(cachePath);
     }
 
     // Initialize common controls (required for ListView)

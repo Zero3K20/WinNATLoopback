@@ -34,7 +34,8 @@ BEGIN
     GROUPBOX        "Server Control",IDC_STATIC,5,248,440,33
     PUSHBUTTON      "Start Server",IDC_BTN_START,12,259,58,14
     PUSHBUTTON      "Stop Server",IDC_BTN_STOP,76,259,58,14
-    LTEXT           "Status: Stopped",IDC_STATIC_STATUS,142,261,295,10
+    PUSHBUTTON      "Clear Cache",IDC_BTN_CLEAR_CACHE,140,259,58,14
+    LTEXT           "Status: Stopped",IDC_STATIC_STATUS,204,261,234,10
 
     // ── Log section ────────────────────────────────────────────────────
     GROUPBOX        "Log",IDC_STATIC,5,286,440,110

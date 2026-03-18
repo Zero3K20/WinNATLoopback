@@ -9,6 +9,7 @@
 #include <thread>
 #include <atomic>
 #include <functional>
+#include <unordered_map>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -24,6 +25,12 @@ inline std::string WtoA(const wchar_t* ws) {
 struct DNSRecord {
     std::wstring hostname;   // e.g. "myserver.local"
     std::wstring ipAddress;  // e.g. "192.168.1.50"
+};
+
+// One cached upstream DNS response keyed on "lowercaseName:qtype"
+struct DNSCacheEntry {
+    std::vector<uint8_t> response;  // Raw DNS response bytes
+    ULONGLONG            expiryTick; // GetTickCount64() value at expiry
 };
 
 class DNSServer {
@@ -48,6 +55,13 @@ public:
 
     std::wstring GetUpstreamDNS2() const;
     void SetUpstreamDNS2(const std::wstring& dns);
+
+    // DNS response cache management
+    void   ClearCache();
+    size_t GetCacheSize() const;
+
+    // Path to the binary cache file; must be set before Start() to enable persistence
+    void SetCacheFilePath(const std::wstring& path);
 
     using LogCallback = std::function<void(const std::wstring&)>;
     void SetLogCallback(LogCallback cb);
@@ -75,6 +89,10 @@ private:
     void ProcessQuery(const uint8_t* data, int len, const sockaddr_in& clientAddr);
     void Log(const std::wstring& msg);
 
+    // Persist the in-memory cache to / restore it from m_cacheFilePath
+    void SaveCacheToFile();
+    void LoadCacheFromFile();
+
     std::atomic<bool> m_running;
     SOCKET m_socket;
     std::thread m_thread;
@@ -83,6 +101,19 @@ private:
     std::wstring m_upstreamDNS;
     std::wstring m_upstreamDNS2;
     std::vector<DNSRecord> m_records;
+
+    // Maximum number of entries kept in the cache at one time
+    static const size_t   kMaxCacheEntries  = 500;
+    // TTL (seconds) used when the upstream response contains no answer records
+    static const uint32_t kNegativeCacheTTL = 30;
+    // Maximum permitted DNS cache key length (sanity guard when reading from file)
+    static const uint16_t kMaxCacheKeyLength = 512;
+    // Maximum permitted DNS response size (must match the server receive buffer)
+    static const uint32_t kMaxDNSResponseSize = 4096;
+    // Maximum TTL we will honour when loading cache entries from disk (7 days)
+    static const ULONGLONG kMaxCacheTTLMs = 7ULL * 24 * 60 * 60 * 1000;
+    std::unordered_map<std::string, DNSCacheEntry> m_dnsCache;
+    std::wstring m_cacheFilePath;
 
     LogCallback m_logCallback;
 };
