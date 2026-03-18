@@ -32,7 +32,8 @@ public:
     ~DNSServer();
 
     // Start listening on port 53, forwarding unknown queries to upstreamDNS
-    bool Start(const std::wstring& upstreamDNS);
+    // upstreamDNS2 is optional; used as fallback if upstreamDNS is unreachable
+    bool Start(const std::wstring& upstreamDNS, const std::wstring& upstreamDNS2 = L"");
     void Stop();
     bool IsRunning() const { return m_running.load(); }
 
@@ -44,6 +45,9 @@ public:
 
     std::wstring GetUpstreamDNS() const;
     void SetUpstreamDNS(const std::wstring& dns);
+
+    std::wstring GetUpstreamDNS2() const;
+    void SetUpstreamDNS2(const std::wstring& dns);
 
     using LogCallback = std::function<void(const std::wstring&)>;
     void SetLogCallback(LogCallback cb);
@@ -61,6 +65,10 @@ private:
         uint16_t id, uint32_t ipNetOrder, bool rd,
         uint8_t* response, int& responseLen);
 
+    // Forward the original query to the given upstream DNS server and return its response
+    bool TryForwardTo(const std::wstring& upstream, const uint8_t* data, int len,
+                      uint8_t* response, int& responseLen);
+
     // Forward the original query to upstream and return the response
     bool ForwardQuery(const uint8_t* data, int len, uint8_t* response, int& responseLen);
 
@@ -73,6 +81,7 @@ private:
 
     mutable CRITICAL_SECTION m_cs;
     std::wstring m_upstreamDNS;
+    std::wstring m_upstreamDNS2;
     std::vector<DNSRecord> m_records;
 
     LogCallback m_logCallback;

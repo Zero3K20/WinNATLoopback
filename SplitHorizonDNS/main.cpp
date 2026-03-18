@@ -36,6 +36,8 @@ static void SaveConfig() {
 
     WritePrivateProfileString(L"Config", L"UpstreamDNS",
         g_server.GetUpstreamDNS().c_str(), g_configPath);
+    WritePrivateProfileString(L"Config", L"UpstreamDNS2",
+        g_server.GetUpstreamDNS2().c_str(), g_configPath);
 
     // Clear old records
     WritePrivateProfileString(L"Records", nullptr, nullptr, g_configPath);
@@ -61,6 +63,12 @@ static void LoadConfig() {
     g_server.SetUpstreamDNS(buf);
     if (g_hDlg)
         SetDlgItemText(g_hDlg, IDC_EDIT_DNSSERVER, buf);
+
+    GetPrivateProfileString(L"Config", L"UpstreamDNS2", L"",
+        buf, 256, g_configPath);
+    g_server.SetUpstreamDNS2(buf);
+    if (g_hDlg)
+        SetDlgItemText(g_hDlg, IDC_EDIT_DNSSERVER2, buf);
 
     DWORD count = GetPrivateProfileInt(L"Records", L"Count", 0, g_configPath);
     std::vector<DNSRecord> records;
@@ -143,9 +151,11 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
         LoadConfig();
         LV_RefreshAll(hLV);
 
-        // Populate DNS server edit box
+        // Populate DNS server edit boxes
         SetDlgItemText(hDlg, IDC_EDIT_DNSSERVER,
             g_server.GetUpstreamDNS().c_str());
+        SetDlgItemText(hDlg, IDC_EDIT_DNSSERVER2,
+            g_server.GetUpstreamDNS2().c_str());
 
         UpdateStatus(false);
         return TRUE;
@@ -216,17 +226,21 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case IDC_BTN_START: {
-            // Save / apply the DNS server field before starting
+            // Save / apply the DNS server fields before starting
             wchar_t dnsServer[256]{};
             GetDlgItemText(hDlg, IDC_EDIT_DNSSERVER, dnsServer, 256);
             if (dnsServer[0] == L'\0') {
-                MessageBox(hDlg, L"Please enter an upstream DNS server address.", L"Validation", MB_ICONWARNING);
+                MessageBox(hDlg, L"Please enter a primary upstream DNS server address.", L"Validation", MB_ICONWARNING);
                 break;
             }
+            wchar_t dnsServer2[256]{};
+            GetDlgItemText(hDlg, IDC_EDIT_DNSSERVER2, dnsServer2, 256);
+
             g_server.SetUpstreamDNS(dnsServer);
+            g_server.SetUpstreamDNS2(dnsServer2);
             SaveConfig();
 
-            if (g_server.Start(dnsServer))
+            if (g_server.Start(dnsServer, dnsServer2))
                 UpdateStatus(true);
             else
                 MessageBox(hDlg, L"Failed to start the DNS server.\n\n"

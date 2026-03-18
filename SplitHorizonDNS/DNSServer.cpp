@@ -30,7 +30,7 @@ DNSServer::~DNSServer() {
 
 // ── public API ───────────────────────────────────────────────────────────────
 
-bool DNSServer::Start(const std::wstring& upstreamDNS) {
+bool DNSServer::Start(const std::wstring& upstreamDNS, const std::wstring& upstreamDNS2) {
     if (m_running.load()) return false;
 
     {
@@ -39,7 +39,8 @@ bool DNSServer::Start(const std::wstring& upstreamDNS) {
     }
 
     EnterCriticalSection(&m_cs);
-    m_upstreamDNS = upstreamDNS;
+    m_upstreamDNS  = upstreamDNS;
+    m_upstreamDNS2 = upstreamDNS2;
     LeaveCriticalSection(&m_cs);
 
     m_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -68,7 +69,11 @@ bool DNSServer::Start(const std::wstring& upstreamDNS) {
 
     m_running = true;
     m_thread  = std::thread(&DNSServer::ServerThread, this);
-    Log(L"DNS server started on UDP port 53  (upstream: " + upstreamDNS + L")");
+    std::wstring logMsg = L"DNS server started on UDP port 53  (upstream: " + upstreamDNS;
+    if (!upstreamDNS2.empty())
+        logMsg += L", secondary: " + upstreamDNS2;
+    logMsg += L")";
+    Log(logMsg);
     return true;
 }
 
@@ -122,6 +127,19 @@ std::wstring DNSServer::GetUpstreamDNS() const {
 void DNSServer::SetUpstreamDNS(const std::wstring& dns) {
     EnterCriticalSection(&m_cs);
     m_upstreamDNS = dns;
+    LeaveCriticalSection(&m_cs);
+}
+
+std::wstring DNSServer::GetUpstreamDNS2() const {
+    EnterCriticalSection(&m_cs);
+    auto s = m_upstreamDNS2;
+    LeaveCriticalSection(&m_cs);
+    return s;
+}
+
+void DNSServer::SetUpstreamDNS2(const std::wstring& dns) {
+    EnterCriticalSection(&m_cs);
+    m_upstreamDNS2 = dns;
     LeaveCriticalSection(&m_cs);
 }
 
@@ -230,12 +248,10 @@ bool DNSServer::BuildAResponse(
     return true;
 }
 
-// Forward the raw query to the configured upstream DNS server and return its response.
-bool DNSServer::ForwardQuery(const uint8_t* data, int len, uint8_t* response, int& responseLen) {
-    EnterCriticalSection(&m_cs);
-    std::wstring upstream = m_upstreamDNS;
-    LeaveCriticalSection(&m_cs);
-
+// Forward the raw query to a specific upstream DNS server and return its response.
+bool DNSServer::TryForwardTo(const std::wstring& upstream, const uint8_t* data, int len,
+                             uint8_t* response, int& responseLen)
+{
     if (upstream.empty()) return false;
 
     SOCKET fwd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -273,6 +289,25 @@ bool DNSServer::ForwardQuery(const uint8_t* data, int len, uint8_t* response, in
     if (r <= 0) return false;
     responseLen = r;
     return true;
+}
+
+// Forward the raw query to the configured upstream DNS server(s) and return the response.
+// Falls back to the secondary DNS server if the primary fails.
+bool DNSServer::ForwardQuery(const uint8_t* data, int len, uint8_t* response, int& responseLen) {
+    EnterCriticalSection(&m_cs);
+    std::wstring upstream  = m_upstreamDNS;
+    std::wstring upstream2 = m_upstreamDNS2;
+    LeaveCriticalSection(&m_cs);
+
+    if (TryForwardTo(upstream, data, len, response, responseLen)) return true;
+
+    // Primary DNS failed – try secondary if configured
+    if (!upstream2.empty()) {
+        Log(L"Primary DNS unreachable, trying secondary: " + upstream2);
+        if (TryForwardTo(upstream2, data, len, response, responseLen)) return true;
+    }
+
+    return false;
 }
 
 // Process one DNS query packet.
