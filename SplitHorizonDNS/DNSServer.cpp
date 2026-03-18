@@ -504,6 +504,11 @@ bool DNSServer::TryForwardTo(const std::wstring& upstream, const uint8_t* data, 
             closesocket(fwd);
             return false;
         }
+        if (!result->ai_addr) {
+            freeaddrinfo(result);
+            closesocket(fwd);
+            return false;
+        }
         srv = *reinterpret_cast<sockaddr_in*>(result->ai_addr);
         freeaddrinfo(result);
     }
@@ -635,10 +640,12 @@ void DNSServer::ProcessQuery(const uint8_t* data, int len, const sockaddr_in& cl
         // When at capacity, evict the first expired entry to make room
         if (m_dnsCache.size() >= kMaxCacheEntries) {
             ULONGLONG now = GetTickCount64();
-            for (auto it = m_dnsCache.begin(); it != m_dnsCache.end(); ++it) {
+            for (auto it = m_dnsCache.begin(); it != m_dnsCache.end(); ) {
                 if (now >= it->second.expiryTick) {
-                    m_dnsCache.erase(it);
+                    it = m_dnsCache.erase(it);
                     break;
+                } else {
+                    ++it;
                 }
             }
         }
