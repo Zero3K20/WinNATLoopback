@@ -254,6 +254,10 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
             UpdateStatus(false);
             break;
 
+        case IDC_BTN_CLEAR_CACHE:
+            g_server.ClearCache();
+            break;
+
         case IDCANCEL:
         case IDOK:
             SendMessage(hDlg, WM_CLOSE, 0, 0);
