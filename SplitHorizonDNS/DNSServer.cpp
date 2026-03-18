@@ -501,6 +501,7 @@ bool DNSServer::TryForwardTo(const std::wstring& upstream, const uint8_t* data, 
         hints.ai_family   = AF_INET;
         hints.ai_socktype = SOCK_DGRAM;
         if (getaddrinfo(upstreamA.c_str(), "53", &hints, &result) != 0 || !result) {
+            if (result) freeaddrinfo(result);
             closesocket(fwd);
             return false;
         }
