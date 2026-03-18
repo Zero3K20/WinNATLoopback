@@ -293,6 +293,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         StringCchCopy(g_configPath, MAX_PATH, L"dns_config.ini");
     }
 
+    // Set the cache file path (same directory, different name)
+    {
+        wchar_t cachePath[MAX_PATH];
+        GetModuleFileName(nullptr, cachePath, MAX_PATH);
+        wchar_t* ls = wcsrchr(cachePath, L'\\');
+        if (ls) {
+            *(ls + 1) = L'\0';
+            StringCchCat(cachePath, MAX_PATH, L"dns_cache.bin");
+        } else {
+            StringCchCopy(cachePath, MAX_PATH, L"dns_cache.bin");
+        }
+        g_server.SetCacheFilePath(cachePath);
+    }
+
     // Initialize common controls (required for ListView)
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&icc);
