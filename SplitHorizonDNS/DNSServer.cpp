@@ -665,7 +665,7 @@ void DNSServer::ServerThread() {
 
         if (r == SOCKET_ERROR) {
             int err = WSAGetLastError();
-            if (err == WSAETIMEDOUT || err == WSAEINTR) continue;
+            if (err == WSAETIMEDOUT || err == WSAEINTR || err == WSAECONNRESET) continue;
             if (m_running.load())
                 Log(L"recvfrom error: " + std::to_wstring(err));
             break;
