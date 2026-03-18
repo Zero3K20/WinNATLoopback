@@ -16,3 +16,4 @@
 #define IDC_BTN_STOP        1008
 #define IDC_STATIC_STATUS   1009
 #define IDC_LIST_LOG        1010
+#define IDC_EDIT_DNSSERVER2 1011
