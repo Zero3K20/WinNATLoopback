@@ -29,6 +29,17 @@ static HWND       g_hDlg = nullptr;
 // Path to the INI config file (same directory as the exe)
 static wchar_t g_configPath[MAX_PATH];
 
+// ── service constants ─────────────────────────────────────────────────────────
+
+static const wchar_t* const SERVICE_NAME         = L"SplitHorizonDNS";
+static const wchar_t* const SERVICE_DISPLAY_NAME = L"Split-Horizon DNS Server";
+
+// ── service state ─────────────────────────────────────────────────────────────
+
+static SERVICE_STATUS        g_svcStatus{};
+static SERVICE_STATUS_HANDLE g_hSvcStatus  = nullptr;
+static HANDLE                g_hStopEvent  = nullptr;
+
 // ── persistence ───────────────────────────────────────────────────────────────
 
 static void SaveConfig() {
@@ -123,6 +134,185 @@ static void UpdateStatus(bool running) {
                 : L"Status: Stopped");
     EnableWindow(GetDlgItem(g_hDlg, IDC_BTN_START), !running);
     EnableWindow(GetDlgItem(g_hDlg, IDC_BTN_STOP),   running);
+}
+
+// ── service helpers ───────────────────────────────────────────────────────────
+
+// Build the path used to set up the config and cache files.
+static void BuildConfigAndCachePaths(wchar_t configPath[MAX_PATH],
+                                     wchar_t cachePath[MAX_PATH]) {
+    GetModuleFileName(nullptr, configPath, MAX_PATH);
+    wchar_t* ls = wcsrchr(configPath, L'\\');
+    if (ls) {
+        *(ls + 1) = L'\0';
+        StringCchCopy(cachePath, MAX_PATH, configPath);
+        StringCchCat(configPath, MAX_PATH, L"dns_config.ini");
+        StringCchCat(cachePath,  MAX_PATH, L"dns_cache.bin");
+    } else {
+        StringCchCopy(configPath, MAX_PATH, L"dns_config.ini");
+        StringCchCopy(cachePath,  MAX_PATH, L"dns_cache.bin");
+    }
+}
+
+// Install the service (auto-start, runs as LocalSystem).
+static bool InstallService(HWND hParent) {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileName(nullptr, exePath, MAX_PATH);
+
+    SC_HANDLE hScm = OpenSCManager(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
+    if (!hScm) {
+        MessageBox(hParent,
+            L"Could not open the Service Control Manager.\n"
+            L"Ensure you are running as Administrator.",
+            L"Install Service", MB_ICONERROR);
+        return false;
+    }
+
+    SC_HANDLE hSvc = CreateService(
+        hScm,
+        SERVICE_NAME,
+        SERVICE_DISPLAY_NAME,
+        SERVICE_ALL_ACCESS,
+        SERVICE_WIN32_OWN_PROCESS,
+        SERVICE_AUTO_START,
+        SERVICE_ERROR_NORMAL,
+        exePath,
+        nullptr, nullptr, nullptr,
+        // Run as LocalSystem: required to bind the privileged UDP port 53
+        // and to access the config file placed next to the executable.
+        nullptr, nullptr);
+
+    bool ok = (hSvc != nullptr);
+    DWORD err = GetLastError();
+    if (hSvc) CloseServiceHandle(hSvc);
+    CloseServiceHandle(hScm);
+
+    if (ok) {
+        MessageBox(hParent,
+            L"Service installed successfully.\n"
+            L"It will start automatically at the next system boot,\n"
+            L"or you can start it now from the Services snap-in.",
+            L"Install Service", MB_ICONINFORMATION);
+    } else if (err == ERROR_SERVICE_EXISTS) {
+        MessageBox(hParent,
+            L"The service is already installed.",
+            L"Install Service", MB_ICONINFORMATION);
+    } else {
+        MessageBox(hParent,
+            L"Failed to install the service.",
+            L"Install Service", MB_ICONERROR);
+    }
+    return ok;
+}
+
+// Stop (if running) and delete the service.
+static bool UninstallService(HWND hParent) {
+    SC_HANDLE hScm = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
+    if (!hScm) {
+        MessageBox(hParent,
+            L"Could not open the Service Control Manager.\n"
+            L"Ensure you are running as Administrator.",
+            L"Uninstall Service", MB_ICONERROR);
+        return false;
+    }
+
+    SC_HANDLE hSvc = OpenService(hScm, SERVICE_NAME,
+                                 SERVICE_STOP | DELETE | SERVICE_QUERY_STATUS);
+    if (!hSvc) {
+        DWORD err = GetLastError();
+        CloseServiceHandle(hScm);
+        if (err == ERROR_SERVICE_DOES_NOT_EXIST) {
+            MessageBox(hParent, L"The service is not installed.",
+                       L"Uninstall Service", MB_ICONINFORMATION);
+        } else {
+            MessageBox(hParent,
+                L"Failed to open the service. Ensure you are running as Administrator.",
+                L"Uninstall Service", MB_ICONERROR);
+        }
+        return false;
+    }
+
+    // Attempt to stop the service before deleting it.
+    // ControlService may fail if the service is already stopped or in a
+    // transient state; that is acceptable – DeleteService marks the service
+    // for deletion and the SCM will complete the removal once the service
+    // process exits.
+    SERVICE_STATUS ss{};
+    ControlService(hSvc, SERVICE_CONTROL_STOP, &ss);
+
+    bool ok = (DeleteService(hSvc) != FALSE);
+    CloseServiceHandle(hSvc);
+    CloseServiceHandle(hScm);
+
+    if (ok) {
+        MessageBox(hParent, L"Service uninstalled successfully.",
+                   L"Uninstall Service", MB_ICONINFORMATION);
+    } else {
+        MessageBox(hParent, L"Failed to uninstall the service.",
+                   L"Uninstall Service", MB_ICONERROR);
+    }
+    return ok;
+}
+
+// ── Windows Service entry point ───────────────────────────────────────────────
+
+static void WINAPI ServiceCtrlHandler(DWORD ctrl) {
+    if (ctrl == SERVICE_CONTROL_STOP || ctrl == SERVICE_CONTROL_SHUTDOWN) {
+        g_svcStatus.dwCurrentState  = SERVICE_STOP_PENDING;
+        g_svcStatus.dwControlsAccepted = 0;
+        SetServiceStatus(g_hSvcStatus, &g_svcStatus);
+        if (g_hStopEvent) SetEvent(g_hStopEvent);
+    }
+}
+
+static void WINAPI ServiceMain(DWORD /*argc*/, LPWSTR* /*argv*/) {
+    g_hSvcStatus = RegisterServiceCtrlHandler(SERVICE_NAME, ServiceCtrlHandler);
+    if (!g_hSvcStatus) return;
+
+    g_svcStatus.dwServiceType      = SERVICE_WIN32_OWN_PROCESS;
+    g_svcStatus.dwCurrentState     = SERVICE_START_PENDING;
+    g_svcStatus.dwControlsAccepted = 0;
+    SetServiceStatus(g_hSvcStatus, &g_svcStatus);
+
+    // Set up file paths
+    wchar_t cachePath[MAX_PATH];
+    BuildConfigAndCachePaths(g_configPath, cachePath);
+    g_server.SetCacheFilePath(cachePath);
+
+    // Load persisted DNS records and upstream servers
+    LoadConfig();
+
+    g_hStopEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+    if (!g_hStopEvent) {
+        g_svcStatus.dwCurrentState  = SERVICE_STOPPED;
+        g_svcStatus.dwWin32ExitCode = GetLastError();
+        SetServiceStatus(g_hSvcStatus, &g_svcStatus);
+        return;
+    }
+
+    if (!g_server.Start(g_server.GetUpstreamDNS(), g_server.GetUpstreamDNS2())) {
+        CloseHandle(g_hStopEvent);
+        g_hStopEvent = nullptr;
+        g_svcStatus.dwCurrentState          = SERVICE_STOPPED;
+        g_svcStatus.dwWin32ExitCode         = ERROR_SERVICE_SPECIFIC_ERROR;
+        g_svcStatus.dwServiceSpecificExitCode = 1;
+        SetServiceStatus(g_hSvcStatus, &g_svcStatus);
+        return;
+    }
+
+    g_svcStatus.dwCurrentState     = SERVICE_RUNNING;
+    g_svcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+    SetServiceStatus(g_hSvcStatus, &g_svcStatus);
+
+    WaitForSingleObject(g_hStopEvent, INFINITE);
+
+    g_server.Stop();
+    CloseHandle(g_hStopEvent);
+    g_hStopEvent = nullptr;
+
+    g_svcStatus.dwCurrentState     = SERVICE_STOPPED;
+    g_svcStatus.dwControlsAccepted = 0;
+    SetServiceStatus(g_hSvcStatus, &g_svcStatus);
 }
 
 // ── dialog procedure ─────────────────────────────────────────────────────────
@@ -258,6 +448,14 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
             g_server.ClearCache();
             break;
 
+        case IDC_BTN_INSTALL_SVC:
+            InstallService(hDlg);
+            break;
+
+        case IDC_BTN_UNINSTALL_SVC:
+            UninstallService(hDlg);
+            break;
+
         case IDCANCEL:
         case IDOK:
             SendMessage(hDlg, WM_CLOSE, 0, 0);
@@ -283,29 +481,23 @@ static INT_PTR CALLBACK DlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
 // ── WinMain ───────────────────────────────────────────────────────────────────
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
-    // Compute the config file path (same dir as exe)
-    GetModuleFileName(nullptr, g_configPath, MAX_PATH);
-    wchar_t* lastSlash = wcsrchr(g_configPath, L'\\');
-    if (lastSlash) {
-        *(lastSlash + 1) = L'\0';
-        StringCchCat(g_configPath, MAX_PATH, L"dns_config.ini");
-    } else {
-        StringCchCopy(g_configPath, MAX_PATH, L"dns_config.ini");
+    // Attempt to run as a service first.
+    // If the process was started by the SCM, StartServiceCtrlDispatcher
+    // will not return until the service has stopped.
+    SERVICE_TABLE_ENTRY serviceTable[] = {
+        { const_cast<LPWSTR>(SERVICE_NAME), ServiceMain },
+        { nullptr, nullptr }
+    };
+    if (StartServiceCtrlDispatcher(serviceTable)) {
+        return 0;
     }
+    // ERROR_FAILED_SERVICE_CONTROLLER_CONNECT means we were launched
+    // interactively (not by the SCM) – fall through to the GUI.
 
-    // Set the cache file path (same directory, different name)
-    {
-        wchar_t cachePath[MAX_PATH];
-        GetModuleFileName(nullptr, cachePath, MAX_PATH);
-        wchar_t* ls = wcsrchr(cachePath, L'\\');
-        if (ls) {
-            *(ls + 1) = L'\0';
-            StringCchCat(cachePath, MAX_PATH, L"dns_cache.bin");
-        } else {
-            StringCchCopy(cachePath, MAX_PATH, L"dns_cache.bin");
-        }
-        g_server.SetCacheFilePath(cachePath);
-    }
+    // Compute the config file path (same dir as exe)
+    wchar_t cachePath[MAX_PATH];
+    BuildConfigAndCachePaths(g_configPath, cachePath);
+    g_server.SetCacheFilePath(cachePath);
 
     // Initialize common controls (required for ListView)
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES };
