@@ -501,6 +501,12 @@ bool DNSServer::TryForwardTo(const std::wstring& upstream, const uint8_t* data, 
         hints.ai_family   = AF_INET;
         hints.ai_socktype = SOCK_DGRAM;
         if (getaddrinfo(upstreamA.c_str(), "53", &hints, &result) != 0 || !result) {
+            if (result) freeaddrinfo(result);
+            closesocket(fwd);
+            return false;
+        }
+        if (!result->ai_addr) {
+            freeaddrinfo(result);
             closesocket(fwd);
             return false;
         }
@@ -635,10 +641,12 @@ void DNSServer::ProcessQuery(const uint8_t* data, int len, const sockaddr_in& cl
         // When at capacity, evict the first expired entry to make room
         if (m_dnsCache.size() >= kMaxCacheEntries) {
             ULONGLONG now = GetTickCount64();
-            for (auto it = m_dnsCache.begin(); it != m_dnsCache.end(); ++it) {
+            for (auto it = m_dnsCache.begin(); it != m_dnsCache.end(); ) {
                 if (now >= it->second.expiryTick) {
-                    m_dnsCache.erase(it);
+                    it = m_dnsCache.erase(it);
                     break;
+                } else {
+                    ++it;
                 }
             }
         }
@@ -665,7 +673,7 @@ void DNSServer::ServerThread() {
 
         if (r == SOCKET_ERROR) {
             int err = WSAGetLastError();
-            if (err == WSAETIMEDOUT || err == WSAEINTR) continue;
+            if (err == WSAETIMEDOUT || err == WSAEINTR || err == WSAECONNRESET) continue;
             if (m_running.load())
                 Log(L"recvfrom error: " + std::to_wstring(err));
             break;
