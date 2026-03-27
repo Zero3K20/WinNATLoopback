@@ -113,8 +113,11 @@ private:
     static const uint32_t kMaxDNSResponseSize = 4096;
     // Maximum TTL we will honour when loading cache entries from disk (7 days)
     static const ULONGLONG kMaxCacheTTLMs = 7ULL * 24 * 60 * 60 * 1000;
+    // Interval between periodic cache flushes to disk (2 hours)
+    static const ULONGLONG kCacheFlushIntervalMs = 2ULL * 60 * 60 * 1000;
     std::unordered_map<std::string, DNSCacheEntry> m_dnsCache;
     std::wstring m_cacheFilePath;
+    ULONGLONG m_lastCacheFlushTick;
 
     LogCallback m_logCallback;
 };
