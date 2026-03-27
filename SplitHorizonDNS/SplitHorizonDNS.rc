@@ -21,7 +21,7 @@ BEGIN
     LTEXT           "Secondary DNS:",IDC_STATIC,212,42,56,8
     EDITTEXT        IDC_EDIT_DNSSERVER2,272,40,103,12,ES_AUTOHSCROLL
     LTEXT           "(Upstream DNS servers – secondary used as fallback if primary fails)",IDC_STATIC,12,57,350,8
-    PUSHBUTTON      "Add Record",IDC_BTN_ADD,370,32,70,14
+    PUSHBUTTON      "Add Record",IDC_BTN_ADD,370,70,70,14
 
     // ── Records list section ───────────────────────────────────────────
     GROUPBOX        "DNS Records",IDC_STATIC,5,103,440,140
