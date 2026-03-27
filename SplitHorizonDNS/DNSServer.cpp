@@ -74,7 +74,7 @@ static bool ReadBytes(HANDLE h, void* data, DWORD len) {
 // ── DNSServer ────────────────────────────────────────────────────────────────
 
 DNSServer::DNSServer()
-    : m_running(false), m_socket(INVALID_SOCKET)
+    : m_running(false), m_socket(INVALID_SOCKET), m_lastCacheFlushTick(0)
 {
     InitializeCriticalSection(&m_cs);
 }
@@ -124,6 +124,7 @@ bool DNSServer::Start(const std::wstring& upstreamDNS, const std::wstring& upstr
     }
 
     m_running = true;
+    m_lastCacheFlushTick = GetTickCount64();
     LoadCacheFromFile();
     m_thread  = std::thread(&DNSServer::ServerThread, this);
     std::wstring logMsg = L"DNS server started on UDP port 53  (upstream: " + upstreamDNS;
@@ -673,13 +674,28 @@ void DNSServer::ServerThread() {
 
         if (r == SOCKET_ERROR) {
             int err = WSAGetLastError();
-            if (err == WSAETIMEDOUT || err == WSAEINTR || err == WSAECONNRESET) continue;
-            if (m_running.load())
-                Log(L"recvfrom error: " + std::to_wstring(err));
-            break;
+            if (err == WSAETIMEDOUT || err == WSAEINTR || err == WSAECONNRESET) {
+                // Fall through to the periodic flush check below
+            } else {
+                if (m_running.load())
+                    Log(L"recvfrom error: " + std::to_wstring(err));
+                break;
+            }
         }
 
         if (r > 0)
             ProcessQuery(buf, r, clientAddr);
+
+        // Periodic cache flush to disk every 2 hours.
+        // Checked on every iteration (including active query processing) so that
+        // busy servers are not excluded from periodic persistence.
+        // GetTickCount64() is a lightweight VDSO read and has negligible overhead.
+        ULONGLONG now = GetTickCount64();
+        if (now < m_lastCacheFlushTick ||
+            now - m_lastCacheFlushTick >= kCacheFlushIntervalMs) {
+            SaveCacheToFile();
+            m_lastCacheFlushTick = now;
+            Log(L"DNS cache flushed to disk (periodic)");
+        }
     }
 }
