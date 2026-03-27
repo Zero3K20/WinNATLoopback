@@ -1,4 +1,4 @@
-// Split-Horizon DNS Server – dialog resource
+﻿// Split-Horizon DNS Server – dialog resource
 #include <winresrc.h>
 #include "resource.h"
 
